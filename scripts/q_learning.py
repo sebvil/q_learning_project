@@ -33,6 +33,11 @@ class QLearning:
                 index1 = self.actions.index(start)
                 index2 = self.actions.index(goal)
 
+                for i in range(3):
+                    for j in range(3):
+                        if goal[i] == goal[j] and goal[i] != 0:
+                            self.action_matrix == -1
+                            continue
                 diff = (start[0] != goal[0]) + (start[1] != goal[1]) + (start[2] != goal[2])
                 if diff == 1:
                     for i in range(3):
