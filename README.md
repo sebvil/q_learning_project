@@ -66,3 +66,8 @@ Team member: Leandra Nealer and Sebastian Villegas Mejia
     Run this function for testing
 
 
+### Timeline:
+
+* Q-learning algorithm (2/19/2021)
+* Robot perception (2/22/2021)
+* Robot manipulation & movement (2/26/2021)
