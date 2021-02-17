@@ -14,8 +14,7 @@ class QLearning:
     def __init__(self):
         self.counter = 0 # check if q algorithm has converged
 
-        self.q_matrix = [0]*64 # q.matrix[i] = the index in the action matrix of optimal state 
-        
+        self.q_matrix = [[0 for i in range(8)] for j in range(64)] # q.matrix[i] = the index in the action matrix of optimal state 
         
         # define red = 0, green = 1, blue = 2
         # define origin = 0, block 1 = 1, ....
@@ -57,4 +56,3 @@ class QLearning:
 
 if __name__ == "__main__":
     Q = QLearning()
-    print(Q.action_matrix[0][0])
