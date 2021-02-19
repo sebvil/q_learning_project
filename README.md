@@ -14,7 +14,8 @@ Team member: Leandra Nealer and Sebastian Villegas Mejia
    calculate the Q-value for this action, and put it into the corresponding 
    location in the Q-matrix.
 
-   For testing, we'll call the function that will be used as the callback for the subscriber to the QLearningReward topic directly and check the value of the matrix.
+   For testing, we'll call the function that will be used as the callback for the 
+   subscriber to the QLearningReward topic directly and check the value of the matrix.
 
 2. Determining when the Q-matrix has converged
 
