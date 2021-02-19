@@ -6,13 +6,15 @@ from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header, String
-from q_learning_project.msg import QLearningReward
+from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock, QMatrix
 import random
-import pprint
+import time
 
 
 class QLearning:
     def __init__(self, gamma=0.5, alpha=1):
+        rospy.init_node("turtlebot3_q_learning")
+
         self.counter = 0  # check if q algorithm has converged
         self.gamma = gamma  # discount factor
         self.alpha = alpha  # learning rate
@@ -61,13 +63,23 @@ class QLearning:
         self.reward_subscriber = rospy.Subscriber(
             "/q_learning/reward", QLearningReward, self.update_q_matrix
         )
+        self.move_publisher = rospy.Publisher(
+            "/q_learning/robot_action", RobotMoveDBToBlock, queue_size=10
+        )
+        self.q_matrix_publisher = rospy.Publisher(
+            "/q_learning/q_matrix", QMatrix, queue_size=10
+        )
 
+        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
+        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
         # ints representing the current state and action taken
         self.action = None
         self.state = 0
+        self.waiting_for_reward = False
 
     def update_q_matrix(self, data):
         """Updates thr Q-matrix based on the give reward."""
+        print("received")
         reward = data.reward
         next_state = self.action_matrix[self.state].index(self.action)
         next_actions_diffs = [
@@ -86,11 +98,27 @@ class QLearning:
             self.counter = 0
         self.q_matrix[self.state][self.action] = new_value
         self.state = next_state
+        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
+
+        self.waiting_for_reward = False
 
     def q_algorithm(self):
         # to do
         while self.counter < 20:
-
+            if self.waiting_for_reward:
+                continue
+            possible_actions = [
+                i for i in self.action_matrix[self.state] if i != -1
+            ]
+            self.action = random.choice(possible_actions)
+            self.move_publisher.publish(
+                RobotMoveDBToBlock(
+                    robot_db=self.index_color_map[self.action // 3],
+                    block_id=self.action % 3 + 1,
+                )
+            )
+            # self.waiting_for_reward = True
+            time.sleep(1)
             print("Executing algorithm")
 
     def get_opt(self, state):
@@ -98,6 +126,9 @@ class QLearning:
         opt = max(self.q_matrix[state])
         return self.q_matrix.index(opt)
 
+    def run(self):
+        self.q_algorithm()
+
 
 if __name__ == "__main__":
-    Q = QLearning()
+    QLearning().run()
