@@ -132,4 +132,4 @@ class QLearning:
 
 if __name__ == "__main__":
     Q = QLearning()
-    #Q.run()
+    Q.run()
