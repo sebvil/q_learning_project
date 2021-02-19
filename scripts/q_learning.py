@@ -132,5 +132,4 @@ class QLearning:
 
 if __name__ == "__main__":
     Q = QLearning()
-    print(Q.action_matrix[3][16])
     #Q.run()
