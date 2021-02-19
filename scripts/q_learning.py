@@ -9,117 +9,147 @@ from std_msgs.msg import Header, String
 from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock, QMatrix
 import random
 import time
+import collections
 
 
 class QLearning:
-    def __init__(self, gamma=0.5, alpha=1):
-        rospy.init_node("turtlebot3_q_learning")
+    def __init__(self, gamma=0.5, alpha=1, test_mode=False):
 
         self.counter = 0  # check if q algorithm has converged
         self.gamma = gamma  # discount factor
         self.alpha = alpha  # learning rate
-        self.epsilon = 0.001
+        self.epsilon = 1
 
         # init q matrix
         self.q_matrix = [
-            [0] * 8 for j in range(64)
+            [0] * 9 for j in range(64)
         ]  # q_matrix[i] = the index in the action matrix of optimal state
 
+        self._init_action_matrix()
+        if not test_mode:
+            rospy.init_node("turtlebot3_q_learning")
+
+            self.reward_subscriber = rospy.Subscriber(
+                "/q_learning/reward", QLearningReward, self.update_q_matrix
+            )
+            self.move_publisher = rospy.Publisher(
+                "/q_learning/robot_action", RobotMoveDBToBlock, queue_size=10
+            )
+            self.q_matrix_publisher = rospy.Publisher(
+                "/q_learning/q_matrix", QMatrix, queue_size=10
+            )
+
+            self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
+
+        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
+        # ints representing the current state and action taken
+        self.action_states_queue = collections.deque()
+        self.state = 0
+        self.iterations = 0
+        self.waiting_for_reward = False
+
+    def _init_action_matrix(self):
         # define red = 0, green = 1, blue = 2
         # define origin = 0, block 1 = 1, ....
-        self.actions = []
+        actions = []
         # let actions[i] = (location red, location green, location blue) in state i
         for blue_loc in range(4):
             for green_loc in range(4):
                 for red_loc in range(4):
-                    self.actions.append((red_loc, green_loc, blue_loc))
+                    actions.append((red_loc, green_loc, blue_loc))
 
         # creating the action matrix
         self.action_matrix = [[-1] * 64 for j in range(64)]
-        for index1, start in enumerate(self.actions):
-            for index2, goal in enumerate(self.actions):
+        for index1, start in enumerate(actions):
+            for index2, goal in enumerate(actions):
                 # check that goal state is valid
-                goal_valid = True
-                found_pos = set()
-                for position in goal:
-                    if position != 0 and position in found_pos:
-                        goal_valid = False
-                        break
-                    found_pos.add(position)
+                goal_valid = self._is_goal_valid(goal)
                 if not goal_valid:
                     continue
                 # check only one dumbell is moving at a time
-                diff = (
-                    (start[0] != goal[0])
-                    + (start[1] != goal[1])
-                    + (start[2] != goal[2])
-                )
-                if diff == 1:
+
+                if self._is_move_valid(start, goal):
                     for color in range(3):
-                        if start[color] != goal[color] and goal[color] != 0:
+                        if start[color] < goal[color] and goal[color] != 0:
                             action = goal[color] - 1 + color * 3
                             self.action_matrix[index1][index2] = action
 
-        self.reward_subscriber = rospy.Subscriber(
-            "/q_learning/reward", QLearningReward, self.update_q_matrix
-        )
-        self.move_publisher = rospy.Publisher(
-            "/q_learning/robot_action", RobotMoveDBToBlock, queue_size=10
-        )
-        self.q_matrix_publisher = rospy.Publisher(
-            "/q_learning/q_matrix", QMatrix, queue_size=10
-        )
+    def _is_goal_valid(self, goal):
+        goal_valid = True
+        found_pos = set()
+        for position in goal:
+            if position != 0 and position in found_pos:
+                goal_valid = False
+                break
+            found_pos.add(position)
+        return goal_valid
 
-        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
-        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
-        # ints representing the current state and action taken
-        self.action = None
-        self.state = 0
-        self.waiting_for_reward = False
+    def _is_move_valid(self, start, goal):
+        moves = 0
+        for x, y in zip(start, goal):
+            if y != x and x == 0:
+                moves += 1
+            elif y != x:
+                return False
+        return moves == 1
 
     def update_q_matrix(self, data):
         """Updates thr Q-matrix based on the give reward."""
-        print("received")
+        if not self.action_states_queue:
+            return
         reward = data.reward
-        next_state = self.action_matrix[self.state].index(self.action)
+        state, next_state, action = self.action_states_queue.popleft()
         next_actions_diffs = [
-            x - self.q_matrix[self.state][self.action]
-            for x in self.q_matrix[next_state]
+            x - self.q_matrix[state][action] for x in self.q_matrix[next_state]
         ]
-        new_value = self.q_matrix[self.state][self.action] + self.alpha * (
+        new_value = self.q_matrix[state][action] + self.alpha * (
             reward + self.gamma * max(next_actions_diffs)
         )
-        if (
-            abs(new_value - self.q_matrix[self.state][self.action])
-            < self.epsilon
-        ):
+        if abs(new_value - self.q_matrix[state][action]) < self.epsilon:
+            print(
+                "new: {}, old: {}, state: {}, counter: {}, reward: {}".format(
+                    new_value,
+                    self.q_matrix[state][action],
+                    state,
+                    self.counter,
+                    data.iteration_num,
+                )
+            )
             self.counter += 1
         else:
             self.counter = 0
-        self.q_matrix[self.state][self.action] = new_value
-        self.state = next_state
-        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
+        self.q_matrix[state][action] = new_value
 
+        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
         self.waiting_for_reward = False
 
     def q_algorithm(self):
         # to do
+        self.last_action = -1
         while self.counter < 20:
-            if self.waiting_for_reward:
-                continue
+            print(self.counter, self.iterations)
+            time.sleep(0.5)
             possible_actions = [
                 i for i in self.action_matrix[self.state] if i != -1
             ]
-            self.action = random.choice(possible_actions)
+            action = random.choice(possible_actions)
+            next_state = self.action_matrix[self.state].index(action)
+            self.action_states_queue.append((self.state, next_state, action))
+            self.iterations += 1
+
             self.move_publisher.publish(
                 RobotMoveDBToBlock(
-                    robot_db=self.index_color_map[self.action // 3],
-                    block_id=self.action % 3 + 1,
+                    robot_db=self.index_color_map[action // 3],
+                    block_id=action % 3 + 1,
                 )
             )
-            # self.waiting_for_reward = True
-            time.sleep(1)
-            print("Executing algorithm")
+            if self.last_action == action:
+                print("ACTION REPEATED", self.state, next_state, action)
+            self.last_action = action
+            if self.iterations % 3 == 0:
+                self.state = 0
+            else:
+                self.state = next_state
 
     def get_opt(self, state):
         # get the optimal action for a given state

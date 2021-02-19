@@ -82,7 +82,6 @@ class PhantomRobotMovement(object):
     def execute_robot_action(self):
 
         time.sleep(0.5)
-        print("tets")
         if len(self.robot_action_queue) > 0:
 
             robot_action_to_take = self.robot_action_queue[0]
@@ -118,7 +117,6 @@ class PhantomRobotMovement(object):
             self.robot_action_queue.pop(0)
 
     def model_states_received(self, data):
-        print(1)
         # if we have a robot action in our queue, get the locations of the
         # dbs and numbered blocks
         if len(self.robot_action_queue) > 0:
@@ -142,7 +140,6 @@ class PhantomRobotMovement(object):
             self.execute_robot_action()
 
     def prepare_to_take_robot_action(self, data):
-        print(data)
         self.robot_action_queue.append(
             RobotAction(data.robot_db, data.block_id)
         )
