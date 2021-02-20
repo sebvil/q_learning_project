@@ -98,6 +98,7 @@ class QLearning:
         if not self.action_states_queue:
             return
         reward = data.reward
+        print("reward: ", reward)
         state, next_state, action = self.action_states_queue.popleft()
         next_actions_diffs = [
             x - self.q_matrix[state][action] for x in self.q_matrix[next_state]
@@ -112,7 +113,7 @@ class QLearning:
                     self.q_matrix[state][action],
                     state,
                     self.counter,
-                    data.iteration_num,
+                    reward,
                 )
             )
             self.counter += 1
@@ -126,8 +127,8 @@ class QLearning:
     def q_algorithm(self):
         # to do
         self.last_action = -1
-        while self.counter < 20:
-            print(self.counter, self.iterations)
+        while self.counter < 100:
+            #print(self.counter, self.iterations)
             time.sleep(0.5)
             possible_actions = [
                 i for i in self.action_matrix[self.state] if i != -1
@@ -158,6 +159,8 @@ class QLearning:
 
     def run(self):
         self.q_algorithm()
+        while not rospy.is_shutdown():
+            rospy.spin()
 
 
 if __name__ == "__main__":
