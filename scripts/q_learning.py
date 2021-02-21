@@ -203,6 +203,7 @@ class QLearning:
         lower = [lower_red, lower_green, lower_blue]
         upper = [upper_red, upper_green, upper_blue]
         if self.converged and not self.order: 
+            # get the order of the colors
             for i in range(3):
                 mask = cv2.inRange(hsv, lower[i], upper[i])
 
