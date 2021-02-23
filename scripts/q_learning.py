@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
-import rospy, cv2, cv_bridge, numpy
+import rospy, cv_bridge, numpy
 
+from cv2 import cv2
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped, Twist
+from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped, Twist, Vector3
 from sensor_msgs.msg import LaserScan, Image
 from std_msgs.msg import Header, String
+import matplotlib.pyplot as plt
 from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock, QMatrix
 import random
 import time
+#import keras_ocr
 import collections
 
 
@@ -18,11 +21,14 @@ class QLearning:
         self.gamma = gamma  # discount factor
         self.alpha = alpha  # learning rate
         self.epsilon = 1
-        self.db_locs = [] 
-        self.theta = []
-        self.order = []
+        self.db_locs = [] # db locations 
+        self.block_locs = [] # block locations
+        self.theta = [] 
+        self.order_db = [] # the order of db
+        self.order_blocks = [] # the order of blocks
         self.converged = True
         self.initialized = False
+        #self.image_received = False
 
         # init q matrix
         self.q_matrix = [
@@ -36,8 +42,11 @@ class QLearning:
             self.bridge = cv_bridge.CvBridge()
             self.image_sub = rospy.Subscriber('camera/rgb/image_raw',Image, self.image_callback)
 
-            self.vel_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
+            self.vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
             self.vel_msg = Twist()
+            self.vel_msg.linear.x = 0
+            self.vel_msg.angular.z = 0
+            self.vel_pub.publish(self.vel_msg)
 
             self.reward_subscriber = rospy.Subscriber(
                 "/q_learning/reward", QLearningReward, self.update_q_matrix
@@ -165,6 +174,7 @@ class QLearning:
             else:
                 self.state = next_state
         self.converged = True
+        print("Converged")
 
     def get_opt(self, state):
         # get the optimal action for a given state
@@ -172,9 +182,36 @@ class QLearning:
         return self.q_matrix.index(opt)
 
     def image_callback(self, msg):
-        cv2.namedWindow("window", 1)
+        #cv2.namedWindow("window", 1)
         # converts the incoming ROS message to OpenCV format and HSV (hue, saturation, value)
-        image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+        self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+        #self.find_db_order(self.image)
+        #if len(self.order_blocks) < 3:
+         #   self.find_block_order()
+        
+    
+    def process_scan(self, data):
+        self.ranges = data.ranges
+        #self.find_db_locs(data.ranges)
+        
+
+    def find_block_order(self, image):
+        if len(self.order_blocks) < 3:
+            print('Finding blocks... ')
+            cv2.namedWindow("window", 1)
+            # find block order
+            #initalize the debugging window
+            cv2.imshow("window", image)
+
+            #self.images = []
+            
+            # source: https://pypi.org/project/keras-ocr/
+            # To install from PyPi
+            # pip install keras-ocr
+         
+            self.order_blocks = [0]*3
+
+    def find_db_order(self, image):
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
         #define the upper and lower bounds for what should be considered red, green, and blue
@@ -202,7 +239,7 @@ class QLearning:
 
         lower = [lower_red, lower_green, lower_blue]
         upper = [upper_red, upper_green, upper_blue]
-        if self.converged and not self.order: 
+        if self.converged and not self.order_db: 
             # get the order of the colors
             for i in range(3):
                 mask = cv2.inRange(hsv, lower[i], upper[i])
@@ -222,29 +259,29 @@ class QLearning:
                 if M['m00'] > 0:
                 #                 # center of the colored pixels in the image
                     cx = int(M['m10']/M['m00'])
-                    cy = int(M['m01']/M['m00'])
+                   #cy = int(M['m01']/M['m00'])
 
                 #                 # a red circle is visualized in the debugging window to indicate
                 #                 # the center point of the yellow pixels
-                    cv2.circle(image, (cx, cy), 30, (0,0,255), -1)
+                    #cv2.circle(image, (cx, cy), 30, (0,0,255), -1)
     
-                    self.order.append(cx)
+                    self.order_db.append(cx)
         cv2.imshow("window", image)
         cv2.waitKey(3)
-    
-    def process_scan(self, data):
-        # get the initial x and y values of the dumbbells
-        if self.converged and self.order and not self.db_locs:
+
+    def find_db_locs(self, ranges):
+           # get the initial x and y values of the dumbbells
+        if self.converged and self.order_db and not self.db_locs:
             print("getting x y...")
             
             #get the order the colors appear in
-            front = self.order.index(numpy.median(self.order))
-            right = self.order.index(numpy.max(self.order))
-            left = self.order.index(numpy.min(self.order))
+            front = self.order_db.index(numpy.median(self.order_db))
+            right = self.order_db.index(numpy.max(self.order_db))
+            left = self.order_db.index(numpy.min(self.order_db))
 
-            self.order[1] = front
-            self.order[2] = right
-            self.order[0] = left
+            self.order_db[1] = front
+            self.order_db[2] = right
+            self.order_db[0] = left
 
             db = 0
             theta = 90
@@ -253,8 +290,8 @@ class QLearning:
             while db < 3:
                 if (theta < 0):
                     theta +=360
-                if data.ranges[theta] != numpy.inf:
-                    color = self.order[db]
+                if ranges[theta] != numpy.inf:
+                    color = self.order_db[db]
                     self.theta[color] = theta
                     db +=1
                     theta-=25
@@ -263,7 +300,7 @@ class QLearning:
             # calculate x,y values for 3 dbs
             for i in range(3):
                 angle = self.theta[i]
-                d = data.ranges[angle]
+                d =ranges[angle]
 
                 if angle > 180:
                     angle -= 360
@@ -274,14 +311,36 @@ class QLearning:
                 print("x: ", x, "y: ", y)
                 self.db_locs.append((x,y)) # store the three x,y values
                 # the furthest right db has negative xvalue 
-
-
+    
+    def wait_t_secs(self,t):
+        dt=0
+        t0 = rospy.Time.now().to_sec() # start time
+        while (dt <= t) :
+            t1 =  rospy.Time.now().to_sec()
+            dt = t1 - t0
+    
     def run(self):
-        while not rospy.is_shutdown():
-            self.q_algorithm()
-            rospy.spin()
+        #self.q_algorithm()
+        #self.find_db_order(self.image)
+        #self.find_db_locs(self.ranges)
+
+        print("Turning")
+            
+        #turn 180 degrees so blocks are in view
+        self.vel_msg.angular.z = numpy.pi
+        self.vel_pub.publish(Vector3(0, 0, 10), Vector3(0, 0, 0))
+        print(numpy.pi)
+        #self.wait_t_secs(10)
+
+        #self.vel_msg.angular.z = 0
+        #self.vel_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, 0))
+        print("Turn complete")
+        
+        #self. find_block_order(self.image)
+        rospy.spin()
 
 
 if __name__ == "__main__":
     Q = QLearning()
+    Q.vel_pub.publish(Vector3(0, 0, 10), Vector3(0, 0, 0))
     Q.run()
