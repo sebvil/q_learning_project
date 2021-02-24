@@ -3,16 +3,31 @@
 import rospy, cv_bridge, numpy
 
 from cv2 import cv2
-from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped, Twist, Vector3
 from sensor_msgs.msg import LaserScan, Image
 from std_msgs.msg import Header, String
+from nav_msgs.msg import Odometry
 import matplotlib.pyplot as plt
 from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock, QMatrix
 import random
 import time
 #import keras_ocr
 import collections
+
+import tf
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
+
+def get_yaw_from_pose(p):
+    """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
+
+    yaw = (euler_from_quaternion([
+            p.orientation.x,
+            p.orientation.y,
+            p.orientation.z,
+            p.orientation.w])
+            [2])
+
+    return yaw
 
 
 class QLearning:
@@ -23,12 +38,19 @@ class QLearning:
         self.epsilon = 1
         self.db_locs = [] # db locations 
         self.block_locs = [] # block locations
-        self.theta = [] 
+        self.db_thetas = [] 
+        self.block_thetas = []
         self.order_db = [] # the order of db
         self.order_blocks = [] # the order of blocks
         self.converged = True
         self.initialized = False
-        #self.image_received = False
+
+        self.p=Pose()
+        self.p.position.x = 0
+        self.p.position.y=0
+        self.p.position.z = 0
+        self.p.orientation.x = 0 # angle of rotation
+
 
         # init q matrix
         self.q_matrix = [
@@ -37,16 +59,16 @@ class QLearning:
 
         self._init_action_matrix()
         if not test_mode:
-            rospy.init_node("turtlebot3_q_learning")
+            rospy.init_node("turtlebot3_q_learning", anonymous=True)
+            
             # set up ROS / OpenCV bridge
             self.bridge = cv_bridge.CvBridge()
+            
             self.image_sub = rospy.Subscriber('camera/rgb/image_raw',Image, self.image_callback)
 
-            self.vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
-            self.vel_msg = Twist()
-            self.vel_msg.linear.x = 0
-            self.vel_msg.angular.z = 0
-            self.vel_pub.publish(self.vel_msg)
+            self.odum_sub = rospy.Subscriber('odom',Odometry, self.get_odom)
+
+            self.vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
 
             self.reward_subscriber = rospy.Subscriber(
                 "/q_learning/reward", QLearningReward, self.update_q_matrix
@@ -181,6 +203,9 @@ class QLearning:
         opt = max(self.q_matrix[state])
         return self.q_matrix.index(opt)
 
+    def get_odom(self, data):
+        self.odom = data.pose.pose
+
     def image_callback(self, msg):
         #cv2.namedWindow("window", 1)
         # converts the incoming ROS message to OpenCV format and HSV (hue, saturation, value)
@@ -193,25 +218,56 @@ class QLearning:
     def process_scan(self, data):
         self.ranges = data.ranges
         #self.find_db_locs(data.ranges)
-        
 
-    def find_block_order(self, image):
+
+    def find_block_order(self):
+        # use keras-ocr to find block order
         if len(self.order_blocks) < 3:
             print('Finding blocks... ')
             cv2.namedWindow("window", 1)
             # find block order
             #initalize the debugging window
-            cv2.imshow("window", image)
+           
 
-            #self.images = []
-            
+            self.images = []
+            for angle in self.block_thetas:
+                self.turn(angle * 0.01745329)
+                rospy.sleep(0.5)
+                self.images.append(self.image)
+    
             # source: https://pypi.org/project/keras-ocr/
             # To install from PyPi
             # pip install keras-ocr
+            # pip install tensorFlow
          
             self.order_blocks = [0]*3
+            
+            cv2.imshow("window", self.images[2])
+            cv2.waitKey(3)
 
-    def find_db_order(self, image):
+    def find_block_thetas(self, ranges):
+        # find theta values for the blocks
+        block_num = 0
+        theta = 90
+        self.block_thetas = [-1,-1,-1]
+        while block_num < 3:
+            # scan for the 3 blocks
+            if (theta < 0):
+                theta +=360
+            if ranges[theta] != numpy.inf:
+                self.block_thetas[block_num] = theta+180-13.2 # subtract 15 to get to ~middle of block
+                if self.block_thetas[block_num] >= 180:
+                    self.block_thetas[block_num] -= 360
+                block_num += 1
+                theta-=25
+            theta -= 1
+        
+            
+
+    def find_db_order(self):
+        print("Finding dumbbell order... ")
+        rospy.sleep(1)
+        image = self.image
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
         #define the upper and lower bounds for what should be considered red, green, and blue
@@ -267,9 +323,11 @@ class QLearning:
     
                     self.order_db.append(cx)
         cv2.imshow("window", image)
-        cv2.waitKey(3)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-    def find_db_locs(self, ranges):
+    def find_db_locs(self):
+        ranges = self.ranges
            # get the initial x and y values of the dumbbells
         if self.converged and self.order_db and not self.db_locs:
             print("getting x y...")
@@ -286,61 +344,67 @@ class QLearning:
             db = 0
             theta = 90
             # getting the angles of the 3 db's
-            self.theta = [-1,-1,-1]
+            self.db_thetas = [-1,-1,-1]
             while db < 3:
                 if (theta < 0):
                     theta +=360
                 if ranges[theta] != numpy.inf:
                     color = self.order_db[db]
-                    self.theta[color] = theta
+                    self.db_thetas[color] = theta 
                     db +=1
                     theta-=25
                 theta -= 1
            
             # calculate x,y values for 3 dbs
             for i in range(3):
-                angle = self.theta[i]
+                angle = self.db_thetas[i]
                 d =ranges[angle]
-
                 if angle > 180:
+                    self.db_thetas[i] -= 360
                     angle -= 360
+
                 angle_rad = angle * 0.01745329
                 
                 x = d * numpy.sin(angle_rad)
                 y = d * numpy.cos(angle_rad)
                 print("x: ", x, "y: ", y)
+                print("Angles: ", self.db_thetas)
                 self.db_locs.append((x,y)) # store the three x,y values
                 # the furthest right db has negative xvalue 
+
     
-    def wait_t_secs(self,t):
-        dt=0
-        t0 = rospy.Time.now().to_sec() # start time
-        while (dt <= t) :
-            t1 =  rospy.Time.now().to_sec()
-            dt = t1 - t0
     
+    def turn(self, angle):
+        #turn robot angle radians
+        # it would be better to do this with odometry, I might change that later
+        yaw = get_yaw_from_pose(self.odom)
+        print(yaw)
+        k = 0.25
+        error = angle-yaw
+        while (abs(error) > 0.05):
+            z = k*error
+            self.vel_pub.publish(Vector3(0,0,0), Vector3(0,0,z))
+            yaw = get_yaw_from_pose(self.odom)
+            error =angle-yaw
+        self.vel_pub.publish(Vector3(0,0,0),Vector3(0,0,0))
+    
+
+
     def run(self):
         #self.q_algorithm()
-        #self.find_db_order(self.image)
-        #self.find_db_locs(self.ranges)
-
-        print("Turning")
-            
-        #turn 180 degrees so blocks are in view
-        self.vel_msg.angular.z = numpy.pi
-        self.vel_pub.publish(Vector3(0, 0, 10), Vector3(0, 0, 0))
-        print(numpy.pi)
-        #self.wait_t_secs(10)
-
-        #self.vel_msg.angular.z = 0
-        #self.vel_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, 0))
-        print("Turn complete")
         
-        #self. find_block_order(self.image)
+        self.find_db_order()
+        self.find_db_locs()
+        
+        #rospy.sleep(1)
+        #self.turn(numpy.pi)
+        #rospy.sleep(1)
+        #self.find_block_thetas(self.ranges)
+        #self.find_block_order()
+        #self.turn(0)
+        #self.turn(-1*numpy.pi/4.0)
         rospy.spin()
-
 
 if __name__ == "__main__":
     Q = QLearning()
-    Q.vel_pub.publish(Vector3(0, 0, 10), Vector3(0, 0, 0))
     Q.run()
