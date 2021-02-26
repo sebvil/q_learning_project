@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock, QMatrix
 import random
 import time
-#import keras_ocr
+import keras_ocr
 import collections
 
 import tf
@@ -36,21 +36,14 @@ class QLearning:
         self.gamma = gamma  # discount factor
         self.alpha = alpha  # learning rate
         self.epsilon = 1
-        self.db_locs = [] # db locations 
-        self.block_locs = [] # block locations
-        self.db_thetas = [] 
+
+        self.db_locs = [] # db locations, locs[i] = (x,y) value of db/block i
+        self.block_locs = [] # block locs, ** note: this treats the LEFT side(facing the db's) as the positive x-axis
+        self.db_thetas = [] # thetas[i] = theta location of db/block i
         self.block_thetas = []
         self.order_db = [] # the order of db
-        self.order_blocks = [] # the order of blocks
+        self.order_blocks = [] # the order of blocks/db's clockwise
         self.converged = True
-        self.initialized = False
-
-        self.p=Pose()
-        self.p.position.x = 0
-        self.p.position.y=0
-        self.p.position.z = 0
-        self.p.orientation.x = 0 # angle of rotation
-
 
         # init q matrix
         self.q_matrix = [
@@ -207,63 +200,102 @@ class QLearning:
         self.odom = data.pose.pose
 
     def image_callback(self, msg):
-        #cv2.namedWindow("window", 1)
-        # converts the incoming ROS message to OpenCV format and HSV (hue, saturation, value)
         self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
-        #self.find_db_order(self.image)
-        #if len(self.order_blocks) < 3:
-         #   self.find_block_order()
-        
+       
     
     def process_scan(self, data):
         self.ranges = data.ranges
-        #self.find_db_locs(data.ranges)
 
 
     def find_block_order(self):
         # use keras-ocr to find block order
-        if len(self.order_blocks) < 3:
+        if not self.order_blocks:
             print('Finding blocks... ')
-            cv2.namedWindow("window", 1)
+           
             # find block order
             #initalize the debugging window
+            #cv2.namedWindow("window", 1)
            
-
+           #initialize the keras pipeline
+            pipeline = keras_ocr.pipeline.Pipeline()
+            
+            # assembling images of the 3 blocks individually
             self.images = []
+            i=0
             for angle in self.block_thetas:
                 self.turn(angle * 0.01745329)
-                rospy.sleep(0.5)
+                rospy.sleep(2)
                 self.images.append(self.image)
-    
+                #cv2.imshow("window", self.images[i])
+                #cv2.waitKey(0)
+                #cv2.destroyAllWindows()
+                i+=1
+
+            # using keras-ocr to get digits 
             # source: https://pypi.org/project/keras-ocr/
             # To install from PyPi
             # pip install keras-ocr
             # pip install tensorFlow
-         
-            self.order_blocks = [0]*3
+        
+         # call the recognizer on the list of images
+            prediction_groups = pipeline.recognize(self.images)
+        # prediction_groups is a list of predictions for each image
+        # prediction_groups[0] is a list of tuples for recognized characters for img1
+        # the tuples are of the formate (word, box), where word is the word
+        # recognized by the recognizer and box is a rectangle in the image where the recognized words reside
+
+            for i in range(3):
+                word = prediction_groups[i][0][0]
+                self.order_blocks.append(int(word))
             
-            cv2.imshow("window", self.images[2])
-            cv2.waitKey(3)
+            # reorder theta and dist to reflect order of blocks
+            tmp_theta = self.block_thetas.copy()
+            tmp_dist = self.block_dist.copy()
+            i=0
+            for block in self.order_blocks:
+                self.block_thetas[block-1] = tmp_theta[i]
+                self.block_dist[block-1] = tmp_dist[i]
+                i+=1
+
+            # calculate x,y values for 3 blocks
+            # note: this treats the LEFT side(facing the db's) as the positive x-axis
+            for i in range(3):
+                angle = self.block_thetas[i]
+                d = self.block_dist[i]
+                if angle > 180:
+                    self.db_thetas[i] -= 360
+                    angle -= 360
+
+                angle_rad = angle * 0.01745329
+                
+                x = d * numpy.sin(angle_rad)
+                y = d * numpy.cos(angle_rad)
+                #print("x: ", x, "y: ", y)
+                #print("Angles: ", self.block_thetas)
+                self.block_locs.append((x,y)) # store the three x,y values
+            print("Block angles: ", self.block_thetas)
 
     def find_block_thetas(self, ranges):
         # find theta values for the blocks
         block_num = 0
         theta = 90
         self.block_thetas = [-1,-1,-1]
+        self.block_dist = [-1,-1,-1]
         while block_num < 3:
             # scan for the 3 blocks
             if (theta < 0):
-                theta +=360
+                theta += 360
             if ranges[theta] != numpy.inf:
-                self.block_thetas[block_num] = theta+180-13.2 # subtract 15 to get to ~middle of block
+                self.block_thetas[block_num] = theta+180-12.7 # subtract to get to ~middle of block
+                self.block_dist[block_num] = ranges[theta]
                 if self.block_thetas[block_num] >= 180:
                     self.block_thetas[block_num] -= 360
                 block_num += 1
                 theta-=25
             theta -= 1
+      
+      
         
-            
-
     def find_db_order(self):
         print("Finding dumbbell order... ")
         rospy.sleep(1)
@@ -313,18 +345,19 @@ class QLearning:
 
                 # # if there are any color pixels found
                 if M['m00'] > 0:
-                #                 # center of the colored pixels in the image
+                    # center of the colored pixels in the image
                     cx = int(M['m10']/M['m00'])
                    #cy = int(M['m01']/M['m00'])
 
-                #                 # a red circle is visualized in the debugging window to indicate
-                #                 # the center point of the yellow pixels
+                    # a red circle is visualized in the debugging window to indicate
+                    # the center point of the yellow pixels
                     #cv2.circle(image, (cx, cy), 30, (0,0,255), -1)
     
                     self.order_db.append(cx)
-        cv2.imshow("window", image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+
+        #cv2.imshow("window", image)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
 
     def find_db_locs(self):
         ranges = self.ranges
@@ -367,19 +400,16 @@ class QLearning:
                 
                 x = d * numpy.sin(angle_rad)
                 y = d * numpy.cos(angle_rad)
-                print("x: ", x, "y: ", y)
-                print("Angles: ", self.db_thetas)
+                print("DB Angles: ", self.db_thetas)
                 self.db_locs.append((x,y)) # store the three x,y values
                 # the furthest right db has negative xvalue 
 
     
     
     def turn(self, angle):
-        #turn robot angle radians
-        # it would be better to do this with odometry, I might change that later
+        #turn robot angle radians using odom
         yaw = get_yaw_from_pose(self.odom)
-        print(yaw)
-        k = 0.25
+        k = 0.35
         error = angle-yaw
         while (abs(error) > 0.05):
             z = k*error
@@ -393,16 +423,18 @@ class QLearning:
     def run(self):
         #self.q_algorithm()
         
+        rospy.sleep(1) # gazebo takes a second to get started
+
+        ## retrieving both theta values and (x,y) tuples for blocks and db for more options
         self.find_db_order()
         self.find_db_locs()
         
-        #rospy.sleep(1)
-        #self.turn(numpy.pi)
-        #rospy.sleep(1)
-        #self.find_block_thetas(self.ranges)
-        #self.find_block_order()
-        #self.turn(0)
-        #self.turn(-1*numpy.pi/4.0)
+        self.turn(numpy.pi)
+        rospy.sleep(1)
+        self.find_block_thetas(self.ranges)
+        self.find_block_order()
+        self.turn(0)
+        
         rospy.spin()
 
 if __name__ == "__main__":
