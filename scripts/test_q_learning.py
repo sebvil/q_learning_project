@@ -72,10 +72,10 @@ class TestQLearning(unittest.TestCase):
                     i += 1
 
     def test_update_q_matrix(self):
-        self.q_learning.action_states_queue.append((0, 1, 0))
-        self.q_learning.action_states_queue.append((1, 9, 4))
-        self.q_learning.action_states_queue.append((9, 57, 8))
-        self.q_learning.action_states_queue.append((0, 1, 0))
+        self.q_learning.action_states_queue.append((1, 0))
+        self.q_learning.action_states_queue.append((9, 4))
+        self.q_learning.action_states_queue.append((57, 8))
+        self.q_learning.action_states_queue.append((1, 0))
 
         # first move
         self.q_learning.update_q_matrix(QLearningReward(reward=1))
