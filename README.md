@@ -1,74 +1,47 @@
 # q_learning_project
 
-Team member: Leandra Nealer and Sebastian Villegas Mejia
+Team members: Leandra Nealer and Sebastian Villegas Mejia
 
-## Implementation planning
+## Objectives
+The purpose of this project is to execute the q-learning algoritm and use its output to determine the optimal arrangement of dumbbells. After running the algorithm using the phantom_movement script to test different orientations, the robot will identify the locations of the dumbbells and blocks and then move the dumbbels to the position that maximizes reward.
+
+## High-Level Description
+We first attempt at random the various orientations of blocks and dumbbells by choosing randomly from the valid actions for the current state. For each orientation, the reward is retrieved. Then the q-algorithm equation is used to calculate the value of this particular action on this particular state, considering both the immediate reward and the possible reward from the next state. This process is continued iteratively until convergence (when every state has been considered). At this point we have calculated the value of every valid action for every state. Using these values we can determine the optimal orientation.
+### Initializing action matrix
+The action matrix is a 2D array indexed by states that holds the action needed to move from state 1 to state 2. (i.e. action[state1][state2]) = (action to change from state 1 to state 2). It holds negative 1 for invalid actions.
+Invalid actions are: a state change that requires more than one action, a change from a state to itself, any state change that moves a dumbbell from a block to origin, any state with more than one dumbbell at a block, and any state that moves a dumbbell from a block to another block.
 
 ### Q-learning algorithm
 
-1. Executing the Q-learning algorithm
-
-   For every iteration of the algorithm, given the current state, we use the
-   action matrix to select of the possible actions at random. Using the 
-   callback function of a subscriber to the `/q_learning/reward` topic, we 
-   calculate the Q-value for this action, and put it into the corresponding 
-   location in the Q-matrix.
-
-   For testing, we'll call the function that will be used as the callback for the 
-   subscriber to the QLearningReward topic directly and check the value of the matrix.
-
-2. Determining when the Q-matrix has converged
-
-    At each iteration of the algorithm, we check if the new Q-value is within 
-    some small epsilon of the previous value. If this is true for 20 steps in a
-    row, the matrix has converged.
-
-    Testing: Run several times on the same values. If the output matrix is approximately the same (within epsilon), the component is working.
-
-3. Once the Q-matrix has converged, how to determine which actions the robot 
-   should take to maximize expected reward
-
-    We will look up in the Q-matrix the action that produces the best reward 
-    given the current state, and perform the designated action.
-
-    Testing: we will set the matrix and the current state manually, and check
-    that the returned action is the expected one.
-
 ### Robot perception
+For perceiving and locating the dumbbells and numbered blocks, we use a combination of the laser scan data and RGB camera data. We have subscriber functions to both of these to get constant updates as the robot turns. The camera is used to determine the order of the items, and then the scan data matches this order to the corresponding physical locations. 
 
-1. Determining the identities and locations of the three colored dumbbells
+It should be noted that this code takes the robots initial location to be the origin. The robot is initially facing towards the positive y-axis. The positive x-axis is left of the robot. This orientation is convenient use with theta values for rotating.
+#### Dumbbells
+**find_db_order():** This function draws from the line_follower code to identify the locations on the screen of the 3 colored dumbbells. To determine appropriate color ranges, code from here was used: https://stackoverflow.com/questions/36817133/identifying-the-range-of-a-color-in-hsv-using-opencv. 
 
-    Define RGB ranges for red, green, and blue. Use the camera to find when we’re looking at these values. (Basically like the line follower project). Use scan data to obtain x and y values of the position relative to the origin.
+The x values retrieved using the line follower code are stored in self.db_order to be reordered and used later
+**find_db_locs():** First, we edit the self.db_order array. Now it is indexed by the order of the dumbbell and stores the color (red = 0, green = 1, blue = 2) of the dumbbell in that location.
 
-    Testing: use the camera to see where the robot thinks each color is.
+Then the bot scans 180 degrees in front of it and finds the theta and distance values to the three dumbbells. Some simple trigonometry is performed to obtain (x,y) values. We combine this data with our knowledge about the order of the colors to store in self.db_locs and self.db_thetas the (x,y) values and theta locations, indexed by color.
+#### Blocks
+The helper function turn() is defined for use in this section. Turn uses the robots odometry to turn to a given theta value on the grid. This part of the code begins with/assumes the robot is turned facing the center center block.
 
-2. Determining the identities and locations of the three numbered blocks.
+**find_block_thetas():** This function simply scans 180 degrees in front of the robot to obtain the theta values and distances to the three blocks before identifying them.
 
-    Either figure out how to do some basic number recognition with Python 
-    (using OpenCV perhaps) or use concepts that we learn in the lecture
-    on Wednesday 2/17.
+**find_block_order():** Using the theta values we just found, the bot turns to these three locations and stores the images of the blocks for identification.
 
-    Testing: same as above, use the camera to see where the robot thinks each block is.
+For identification we use keras-ocr(source: source: https://pypi.org/project/keras-ocr/) to identify the numbers on the three blocks. The number on the block is taken and stored in block_order. Using the order we have obtained we (similarly to above) edit our block_thetas and block_dist arrays to reflect the order of the blocks. Now we can index these arrays by block number.
+
+Finally we do some simple trigonometry to obtain (x,y) values of the three blocks.
+
 
 ### Robot manipulation & movement
 
-1. Picking up and putting down the dumbbells with the OpenMANIPULATOR arm
-
-    Use the `moveit`_commander package to control the arm. Move directly in front of the dumbbell. Move arm to some position we’ll determine through experimentation. Close grabber and return to original position. We'll use data from LaserScan to determine the distance to the dumbbell and experiment to determine the exact
-    values at which to place the arm.
-
-    Testing: put a dumbbell in front of the robot. Have a function that handles “pick up” and “put down”
-
-2. Navigating to the appropriate locations to pick up and put down the dumbbells
-
-    Have the robot remember its current position. Once we have the x and y values of the goal,  move the robot to the correct position using the differences between the current position and the goal.
-
-    Testing: Have a function that takes in current position and goal position. 
-    Run this function for testing
+## Challenges
+* This was my first time intializing 2d-arrays in Python. After a quick google search I used this syntax: "array= [[0]*64] *64". This syntax apparently creates a shallow list, which causes the entire column to change when an item in one row is changed. This lead to a lot of confusion until I read more about 2d-arrays.
+* In writing the turn function, I had to learn to use the robot's odometry to keep track of his rotation. I ended up going back to the particle filter project to see how the get_yaw_from_euler function was used, and also reading a lot online about subscribing to the odometry.
+* Perception requires a few different ROS topics in tandem to work. I originally wrote the code for this section inside of the subscriber function, and this lead to a lot of messy and unyieldy code.
 
 
-### Timeline:
 
-* Q-learning algorithm (2/19/2021)
-* Robot perception (2/22/2021)
-* Robot manipulation & movement (2/26/2021)
