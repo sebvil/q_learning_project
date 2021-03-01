@@ -46,5 +46,13 @@ Finally we do some simple trigonometry to obtain (x,y) values of the three block
 * In writing the turn function, I had to learn to use the robot's odometry to keep track of his rotation. I ended up going back to the particle filter project to see how the get_yaw_from_euler function was used, and also reading a lot online about subscribing to the odometry.
 * Perception requires a few different ROS topics in tandem to work. I originally wrote the code for this section inside of the subscriber function, and this lead to a lot of messy and unyieldy code. We moved perception to its own script, and set up subscriber functions that simply store the data received so it can be called upon elsewhere. The code is still pretty long, but much better organized
 
+## Futurework
+* The robot's odometry will become less effective over time as it migrates due to noise. Having some line or marker at the theta=0 position would allow it to correct itself.
+* This code assumes the dumbbells are in front and the block are behind it. The bot could instead find the positions of these items all around it first by using scan data to find where items are, and then by using the color and digit recognition to figure out if it is a dumbbell or a block it is seeing.
+
+## Takeaways
+* This was the largest program we've written thus far this quarter. We learned a lot about the importance of reorganizing code to readability in a large project, especially when working in pairs or on a team with people who will need to work with your code. 
+* The project itself and many of its sub-parts were quite daunting. By breaking these tasks down into many smaller problems with helper functions the task became much more manageable.
+* For perception in particular, online resources were essential to this project. When struggling with a new and unfamiliar problem, it's wise to look for resources you can learn from or even implement in your own code to solve your problem.
 
 
