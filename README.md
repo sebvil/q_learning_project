@@ -34,7 +34,7 @@ The helper function turn() is defined for use in this section. Turn uses the rob
 
 **find_block_order():** Using the theta values we just found, the bot turns to these three locations and stores the images of the blocks for identification.
 
-For identification we use keras-ocr(source: source: https://pypi.org/project/keras-ocr/) to identify the numbers on the three blocks. The number on the block is taken and stored in block_order. Using the order we have obtained we (similarly to above) edit our block_thetas and block_dist arrays to reflect the order of the blocks. Now we can index these arrays by block number.
+For identification we use keras-ocr(source: https://pypi.org/project/keras-ocr/) to identify the numbers on the three blocks. The number on the block is taken and stored in block_order. Using the order we have obtained we (similarly to above) edit our block_thetas and block_dist arrays to reflect the order of the blocks. Now we can index these arrays by block number.
 
 Finally we do some simple trigonometry to obtain (x,y) values of the three blocks.
 
