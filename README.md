@@ -7,6 +7,7 @@ The purpose of this project is to execute the q-learning algoritm and use its ou
 
 ## High-Level Description
 We first attempt at random the various orientations of blocks and dumbbells by choosing randomly from the valid actions for the current state. For each orientation, the reward is retrieved. Then the q-algorithm equation is used to calculate the value of this particular action on this particular state, considering both the immediate reward and the possible reward from the next state. This process is continued iteratively until convergence (when every state has been considered). At this point we have calculated the value of every valid action for every state. Using these values we can determine the optimal orientation.
+
 ### Initializing action matrix
 The action matrix is a 2D array indexed by states that holds the action needed to move from state 1 to state 2. (i.e. action[state1][state2]) = (action to change from state 1 to state 2). It holds negative 1 for invalid actions.
 Invalid actions are: a state change that requires more than one action, a change from a state to itself, any state change that moves a dumbbell from a block to origin, any state with more than one dumbbell at a block, and any state that moves a dumbbell from a block to another block.
@@ -17,6 +18,7 @@ Invalid actions are: a state change that requires more than one action, a change
 For perceiving and locating the dumbbells and numbered blocks, we use a combination of the laser scan data and RGB camera data. We have subscriber functions to both of these to get constant updates as the robot turns. The camera is used to determine the order of the items, and then the scan data matches this order to the corresponding physical locations. 
 
 It should be noted that this code takes the robots initial location to be the origin. The robot is initially facing towards the positive y-axis. The positive x-axis is left of the robot. This orientation is convenient use with theta values for rotating.
+
 #### Dumbbells
 **find_db_order():** This function draws from the line_follower code to identify the locations on the screen of the 3 colored dumbbells. To determine appropriate color ranges, code from here was used: https://stackoverflow.com/questions/36817133/identifying-the-range-of-a-color-in-hsv-using-opencv. 
 
@@ -24,6 +26,7 @@ The x values retrieved using the line follower code are stored in self.db_order 
 **find_db_locs():** First, we edit the self.db_order array. Now it is indexed by the order of the dumbbell and stores the color (red = 0, green = 1, blue = 2) of the dumbbell in that location.
 
 Then the bot scans 180 degrees in front of it and finds the theta and distance values to the three dumbbells. Some simple trigonometry is performed to obtain (x,y) values. We combine this data with our knowledge about the order of the colors to store in self.db_locs and self.db_thetas the (x,y) values and theta locations, indexed by color.
+
 #### Blocks
 The helper function turn() is defined for use in this section. Turn uses the robots odometry to turn to a given theta value on the grid. This part of the code begins with/assumes the robot is turned facing the center center block.
 
