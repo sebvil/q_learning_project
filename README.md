@@ -15,6 +15,8 @@ Invalid actions are: a state change that requires more than one action, a change
 ### Q-learning algorithm
 
 ### Robot perception
+The robot perception code lives in the robot_control.py file in the scripts folder.
+
 For perceiving and locating the dumbbells and numbered blocks, we use a combination of the laser scan data and RGB camera data. We have subscriber functions to both of these to get constant updates as the robot turns. The camera is used to determine the order of the items, and then the scan data matches this order to the corresponding physical locations. 
 
 It should be noted that this code takes the robots initial location to be the origin. The robot is initially facing towards the positive y-axis. The positive x-axis is left of the robot. This orientation is convenient use with theta values for rotating.
