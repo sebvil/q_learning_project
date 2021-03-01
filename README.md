@@ -41,7 +41,7 @@ Finally we do some simple trigonometry to obtain (x,y) values of the three block
 ## Challenges
 * This was my first time intializing 2d-arrays in Python. After a quick google search I used this syntax: "array= [[0]*64] *64". This syntax apparently creates a shallow list, which causes the entire column to change when an item in one row is changed. This lead to a lot of confusion until I read more about 2d-arrays.
 * In writing the turn function, I had to learn to use the robot's odometry to keep track of his rotation. I ended up going back to the particle filter project to see how the get_yaw_from_euler function was used, and also reading a lot online about subscribing to the odometry.
-* Perception requires a few different ROS topics in tandem to work. I originally wrote the code for this section inside of the subscriber function, and this lead to a lot of messy and unyieldy code.
+* Perception requires a few different ROS topics in tandem to work. I originally wrote the code for this section inside of the subscriber function, and this lead to a lot of messy and unyieldy code. We moved perception to its own script, and set up subscriber functions that simply store the data received so it can be called upon elsewhere. The code is still pretty long, but much better organized
 
 
 
