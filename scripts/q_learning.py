@@ -13,8 +13,6 @@ from q_learning_project.msg import (
 )
 from tf.transformations import euler_from_quaternion
 
-from robot_control import RobotControl
-
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
@@ -134,6 +132,7 @@ class QLearning:
 
     def update_q_matrix(self, data):
         """Updates thr Q-matrix based on the give reward."""
+        print(data)
         if not self.action_states_queue:
             return
         reward = data.reward
@@ -155,13 +154,18 @@ class QLearning:
         self.q_matrix_publisher.publish(self.q_matrix)
 
     def q_algorithm(self):
-        while self.counter < 50 or self.state != 0:
+        actions = [2, 3, 7]
+        while (
+            sum(self._get_q_row(0)) != self.gamma ** 2 * 100 or self.state != 0
+        ):
             rospy.sleep(1.5)
             print(self.iterations, self.state, self._get_q_row(self.state))
             possible_actions = [
                 i for i in self.action_matrix[self.state] if i != -1
             ]
-            action = random.choice(possible_actions)
+            action = actions[
+                self.iterations % 3
+            ]  # random.choice(possible_actions)
             next_state = self.action_matrix[self.state].index(action)
             self.action_states_queue.append((self.state, next_state, action))
             self.iterations += 1

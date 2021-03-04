@@ -12,6 +12,13 @@ from nav_msgs.msg import Odometry
 from q_learning_project.msg import QMatrix
 from sensor_msgs.msg import Image, LaserScan
 from tf.transformations import euler_from_quaternion
+import moveit_commander
+
+# Gripper open/close: 0.01 rad/ -0.01 rad
+# Carry: 0, -0.85 0.305, -0.73
+# Drop: 0, 0.415 0.305, -0.73
+ARM_INIT_POSITION = [0, 0.415, 0.305, -0.73]
+ARM_GRAB_POSITION = [0, -0.3, 0.305, -0.73]
 
 
 def get_yaw_from_pose(p):
@@ -55,10 +62,18 @@ class RobotControl:
 
         self.scan_sub = rospy.Subscriber("scan", LaserScan, self.process_scan)
 
+        self.move_group_arm = moveit_commander.MoveGroupCommander("arm")
+
+        # the interface to the group of joints making up the turtlebot3
+        # openmanipulator gripper
+        self.move_group_gripper = moveit_commander.MoveGroupCommander(
+            "gripper"
+        )
+
     def get_opt(self, state):
         # get the optimal action for a given state
-        opt = max(self.q_matrix[state])
-        return self.q_matrix.index(opt)
+        opt = max(self.q_matrix[state].q_matrix_row)
+        return self.q_matrix[state].q_matrix_row.index(opt)
 
     def image_callback(self, msg):
         self.image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
@@ -105,6 +120,8 @@ class RobotControl:
 
             for i in range(3):
                 word = prediction_groups[i][0][0]
+                if word == "l":
+                    word = "1"
                 self.order_blocks.append(int(word))
 
             # reorder theta and dist to reflect order of blocks
@@ -127,8 +144,8 @@ class RobotControl:
 
                 angle_rad = angle * 0.01745329
 
-                x = d * numpy.sin(angle_rad)
-                y = d * numpy.cos(angle_rad)
+                x = d * numpy.cos(angle_rad)
+                y = d * numpy.sin(angle_rad)
                 # print("x: ", x, "y: ", y)
                 # print("Angles: ", self.block_thetas)
                 self.block_locs.append((x, y))  # store the three x,y values
@@ -263,33 +280,37 @@ class RobotControl:
 
                 angle_rad = angle * 0.01745329
 
-                x = d * numpy.sin(angle_rad)
-                y = d * numpy.cos(angle_rad)
+                x = d * numpy.cos(angle_rad)
+                y = d * numpy.sin(angle_rad)
                 print("DB Angles: ", self.db_thetas)
                 self.db_locs.append((x, y))  # store the three x,y values
                 # the furthest right db has negative xvalue
 
+            self.db_thetas = [t * math.pi / 180 for t in self.db_thetas]
+
     def turn(self, angle):
         # turn robot angle radians using odom
-        while not self.odom:
+        while not self.pose:
             pass
-        yaw = get_yaw_from_pose(self.odom)
+        angle = angle % math.tau
+        yaw = get_yaw_from_pose(self.pose) % math.tau
         k = 0.35
         error = angle - yaw
         while abs(error) > 0.05:
             z = k * error
-            self.vel_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, z))
-            yaw = get_yaw_from_pose(self.odom)
+            if abs(error) > math.pi:
+                z *= -1
+            self.speed_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, z))
+            yaw = get_yaw_from_pose(self.pose) % math.tau
             error = angle - yaw
-        self.vel_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, 0))
+        self.speed_pub.publish(Vector3(0, 0, 0), Vector3(0, 0, 0))
 
     def process_odom(self, data):
         self.pose = data.pose.pose
 
     def process_q_matrix(self, data):
-        if not self.pose or not self.converged:
-            return
-
+        while not self.pose or not self.converged:
+            pass
         self.q_matrix = data.q_matrix
 
         state = 0
@@ -298,37 +319,164 @@ class RobotControl:
             robot_db = action // 3
             block_id = action % 3 + 1
 
-            x, y = self.db_locs[self.order_db.index(robot_db)]
-            self.move_to_xy(x, y)
+            self.move_to_object("db", robot_db)
+            rospy.sleep(5)
+            self.move_group_arm.go(ARM_GRAB_POSITION, wait=True)
+            self.move_group_arm.stop()
 
-            x, y = self.db_locs[self.order_blocks.index(block_id)]
-            self.move_to_xy(x, y)
+            self.move_to_object("block", block_id)
+            self.move_group_arm.go(ARM_INIT_POSITION, wait=True)
+            self.move_group_arm.stop()
+            speed = Twist()
+            speed.linear.x = -0.1
+            self.speed_pub.publish(speed)
+            rospy.sleep(2)
+            speed.linear.x = 0
+            self.speed_pub.publish(speed)
+            rospy.sleep(5)
 
             state += (4 ** robot_db) * block_id
         print("Final State:", state)
 
-    def move_to_xy(self, x, y):
-        while True:
+    def move_to_db(self, db_id):
+        x, y = self.db_locs[self.order_db.index(db_id)]
+        current_x = self.pose.position.x
+        current_y = self.pose.position.y
+        print(x, y, db_id)
+
+        theta = math.atan((y - current_y) / (x - current_x))
+
+        if y < current_y and x > current_x:
+            theta = math.tau + theta
+        if x < current_x:
+            theta += math.pi
+
+        self.turn(theta)
+
+        distance = self.ranges[0]
+        center = 0
+
+        color = numpy.uint8([[[0, 0, 0]]])
+        color[0][0][2 - db_id] = 255
+        print(color)
+        hsvColor = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
+        lower_color = numpy.array([hsvColor[0][0][0] - 10, 100, 100])
+        upper_color = numpy.array([hsvColor[0][0][0] + 10, 255, 255])
+
+        image = self.image
+        h, w, d1 = image.shape
+        search_top = int(h / 2)
+        search_bot = int(h / 2 + 1)
+
+        max_speed = 0.01
+        while distance > 0.20 or abs(center) > 3:
+            image = self.image
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+            mask = cv2.inRange(hsv, lower_color, upper_color)
+
+            # this erases all pixels that aren't the correct color
+
+            mask[0:search_top, 0:w] = 0
+            mask[search_bot:h, 0:w] = 0
+
+            # # using moments() function, the center of the dumbbell is determined
+            M = cv2.moments(mask)
+            # # if there are any color pixels found
+            if M["m00"] > 0:
+                # print(int(M["m10"] / M["m00"]), w / 2)
+                center = (w / 2) - int(M["m10"] / M["m00"])
+
+            distance = min(self.ranges[0:20] + self.ranges[-20:])
+
             speed = Twist()
+            if distance > 0.22 and distance < 3.5 and abs(center) < 100:
+                speed.linear.x = min(max_speed, distance * 0.1)
+
+            max_speed = min(1, max_speed + 0.1)
+            if center != 0:
+                speed.angular.z = center * 0.001
+
+            self.speed_pub.publish(speed)
+
+        print("Moved to ", db_id)
+
+    def move_to_object(self, object_type, object_id):
+        if object_type == "db":
+            self.move_to_db(object_id)
+            return
+            # x, y = self.db_locs[self.order_db.index(object_id)]
+        elif object_type == "block":
+            x, y = self.block_locs[self.order_blocks.index(object_id)]
+
+        print(x, y, object_id, object_type)
+        current_x = self.pose.position.x
+        current_y = self.pose.position.y
+
+        distance = ((current_x - x) ** 2 + (current_y - y) ** 2) ** 0.5
+        rate = rospy.Rate(10)
+        print("done 1")
+        max_speed = 0.1
+
+        theta = math.atan((y - current_y) / (x - current_x))
+
+        if y < current_y and x > current_x:
+            theta = math.tau + theta
+        if x < current_x:
+            theta += math.pi
+
+        self.turn(theta)
+
+        while distance > 0.8:
+            speed = Twist()
+
+            # distance = min(self.ranges[0:20] + self.ranges[-20:])
+
+            # if distance > 3.5:
             current_x = self.pose.position.x
             current_y = self.pose.position.y
             distance = ((current_x - x) ** 2 + (current_y - y) ** 2) ** 0.5
-            if distance < 0.1:
-                break
-            theta = (
-                math.atan((y - current_y) / (x - current_x)) * 180 / math.pi
-            )
+            if distance < 1:
+                distance = min(self.ranges[0:10] + self.ranges[-10:])
 
-            yaw = (get_yaw_from_pose(self.pose) * 180 / math.pi) % 360
-            if abs(theta - yaw) > 10:
-                speed.linear.x = 0.0
-                speed.angular.z = abs(theta - yaw) / (theta - yaw) * 0.5
-            else:
-                speed.linear.x = min(1, distance / 2)
-            speed.angular.z = abs(theta - yaw) * 0.05
+            theta = math.atan((y - current_y) / (x - current_x))
+
+            if y < current_y and x > current_x:
+                theta = math.tau + theta
+            if x < current_x:
+                theta += math.pi
+
+            yaw = get_yaw_from_pose(self.pose) % math.tau
+            error = theta - yaw
+            z = 0.1 * error
+            if abs(error) > math.pi:
+                z *= -1
+
+            speed.angular.z = z
+            speed.linear.x = min(max_speed, distance * 0.1)
             self.speed_pub.publish(speed)
+            if max_speed < 1:
+                max_speed += 0.1
+            rate.sleep()
+
+        self.speed_pub.publish(Twist())
+        print("done 2")
 
     def run(self):
+
+        # self.db_locs = [
+        #     (1, 0.5),
+        #     (1, 0),
+        #     (1, -0.5),
+        # ]  # db locations, locs[i] = (x,y) value of db/block i
+        # self.block_locs = [
+        #     (-2, 2),
+        #     (-2, 0),
+        #     (-2, -2),
+        # ]  # block locs, ** note: this treats the LEFT side(facing the db's) as the positive x-axis
+
+        # self.order_db = [1, 2, 0]  # the order of db
+        # self.order_blocks = [3, 2, 1]
 
         # retrieving both theta values and (x,y) tuples for blocks and db for
         # more options
@@ -339,10 +487,18 @@ class RobotControl:
         rospy.sleep(1)
         self.find_block_thetas(self.ranges)
         self.find_block_order()
+
+        print("DONE")
         self.turn(0)
+
+        self.move_group_arm.go(ARM_INIT_POSITION, wait=True)
+        self.move_group_arm.stop()
+
+        self.move_group_gripper.go([0.01, 0.01], wait=True)
+        self.move_group_gripper.stop()
+
         self.converged = True
 
-        self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
         rospy.spin()
 
 
