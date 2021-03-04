@@ -3,7 +3,7 @@
 Team members: Leandra Nealer and Sebastian Villegas Mejia
 
 ## Objectives
-The purpose of this project is to execute the q-learning algoritm and use its output to determine the optimal arrangement of dumbbells. After running the algorithm using the phantom_movement script to test different orientations, the robot will identify the locations of the dumbbells and blocks and then move the dumbbels to the position that maximizes reward.
+The purpose of this project is to execute the q-learning algoritm and use its output to determine the optimal arrangement of dumbbells in front of numbered blocks. After running the algorithm using the phantom_movement script to test different orientations, the robot will identify the locations of the dumbbells and blocks and then move the dumbells to the position that maximizes reward.
 
 ## High-Level Description
 We first attempt at random the various orientations of blocks and dumbbells by choosing randomly from the valid actions for the current state. For each orientation, the reward is retrieved. Then the q-algorithm equation is used to calculate the value of this particular action on this particular state, considering both the immediate reward and the possible reward from the next state. This process is continued iteratively until convergence (when every state has been considered). At this point we have calculated the value of every valid action for every state. Using these values we can determine the optimal orientation.
@@ -13,7 +13,15 @@ The action matrix is a 2D array indexed by states that holds the action needed t
 Invalid actions are: a state change that requires more than one action, a change from a state to itself, any state change that moves a dumbbell from a block to origin, any state with more than one dumbbell at a block, and any state that moves a dumbbell from a block to another block.
 
 ### Q-learning algorithm
+The code for this section lives in the q_learning.py file in the scripts folder.
+**Random actions:** The possible actions for state i are stored in action_matrix. At every iteration, the algorithm randomly chooses an action from this row that does not have the value -1. 
 
+**update_q_matrix():** This is a subscriber function that executes every time a reward is published. The algorithm then retrieves the value of the current state and action from the q_matrix. It also retrieves the maximum value from the row of the q_matrix corresponding to the next state. Then the q learning equation is calculated and stored in the cell of the q_matrix for the current state and action. The function furthermore checks if the value has changed significantly for convergence purposes.
+
+**Convergence:** The q_matrix is determined to have converged when the values of the matrix do not change by more than some small epsilon for 50 iterations. In particular we use epsilon = 0.1 for this project. This condition is checked in update_q_matrix and the counter is either incremented or reset to zero.
+
+**Path execution:** The function get_opt() retrieves the optimal action for the given state from the q_matrix. In other words, it retrieves the index of the maximum valued cell in the q_matrix[state] row. The optimal path is determined by executing this action and repeating 2 more times.
+ 
 ### Robot perception
 The robot perception code lives in the robot_control.py file in the scripts folder.
 
