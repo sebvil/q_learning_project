@@ -112,41 +112,6 @@ class ImageProcessing:
         while self.image is None:
             print("waiting for image...")
             rospy.sleep(1)
-        # image = self.image
-        # hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # define the upper and lower bounds for what should be considered red,
-        # green, and blue
-        # red = numpy.uint8([[[0, 0, 255]]])
-        # hsvRed = cv2.cvtColor(red, cv2.COLOR_BGR2HSV)
-        # lower_red = hsvRed[0][0][0] - 10, 100, 100
-        # upper_red = hsvRed[0][0][0] + 10, 255, 255
-        # lower_red = numpy.array([lower_red[0], lower_red[1], lower_red[2]])
-        # upper_red = numpy.array([upper_red[0], upper_red[1], upper_red[2]])
-
-        # green = numpy.uint8([[[0, 255, 0]]])
-        # hsvGreen = cv2.cvtColor(green, cv2.COLOR_BGR2HSV)
-        # lower_green = hsvGreen[0][0][0] - 10, 100, 100
-        # upper_green = hsvGreen[0][0][0] + 10, 255, 255
-        # lower_green = numpy.array(
-        #     [lower_green[0], lower_green[1], lower_green[2]]
-        # )
-        # upper_green = numpy.array(
-        #     [upper_green[0], upper_green[1], upper_green[2]]
-        # )
-
-        # blue = numpy.uint8([[[255, 0, 0]]])
-        # hsvBlue = cv2.cvtColor(blue, cv2.COLOR_BGR2HSV)
-        # lower_blue = hsvBlue[0][0][0] - 10, 100, 100
-        # upper_blue = hsvBlue[0][0][0] + 10, 255, 255
-        # lower_blue = numpy.array([lower_blue[0], lower_blue[1],
-        # [2]])
-        # upper_blue = numpy.array([upper_blue[0], upper_blue[1],
-        # upper_blue[2]])
-
-        # lower = [lower_red, lower_green, lower_blue]
-        # upper = [upper_red, upper_green, upper_blue]
-        # get the order of the colors
 
         # Gets centers of red, green, and blue dumbbells, in that order
         for i in range(3):
@@ -249,11 +214,8 @@ class ImageProcessing:
         """Determines initial locations of blocks and dumbbells."""
         self.find_db_order()
         self.find_db_locs()
-        print(self.db_locs, self.db_thetas, self.order_db)
-
         self.robot_controller.turn(numpy.pi)
         rospy.sleep(1)
         self.find_block_thetas()
         self.find_block_order()
-        print(self.block_locs, self.block_thetas, self.order_blocks)
         print("DONE")

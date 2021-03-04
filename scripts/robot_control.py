@@ -35,6 +35,7 @@ class RobotControl:
         self.converged = False
         self.ranges = []
         self.processing = image_processing.ImageProcessing(self)
+        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
 
         self.speed_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
         self.odom_subs = rospy.Subscriber("/odom", Odometry, self.process_odom)
@@ -141,7 +142,8 @@ class RobotControl:
         x, y = self.processing.db_locs[self.processing.order_db.index(db_id)]
         current_x = self.pose.position.x
         current_y = self.pose.position.y
-        print(x, y, db_id)
+
+        print(f"Moving to {db_id} at {x}, {y}")
 
         # Turn to face dumbbell
         theta = math.atan((y - current_y) / (x - current_x))
@@ -172,13 +174,11 @@ class RobotControl:
 
             self.speed_pub.publish(speed)
 
-        print("Moved to ", db_id)
-
     def move_to_block(self, block_id):
         x, y = self.processing.block_locs[
             self.processing.order_blocks.index(block_id)
         ]
-        print(x, y, block_id)
+        print(f"Moving to {block_id} at {x}, {y}")
 
         # turn to face block
         current_x = self.pose.position.x
@@ -234,23 +234,6 @@ class RobotControl:
 
     def run(self):
 
-        # self.db_locs = [
-        #     (1, 0.5),
-        #     (1, 0),
-        #     (1, -0.5),
-        # ]  # db locations, locs[i] = (x,y) value of db/block i
-        # self.block_locs = [
-        #     (-2, 2),
-        #     (-2, 0),
-        #     (-2, -2),
-        # ]  # block locs, ** note: this treats the LEFT side(facing the db's)
-        # as the positive x-axis
-
-        # self.order_db = [1, 2, 0]  # the order of db
-        # self.order_blocks = [3, 2, 1]
-
-        # retrieving both theta values and (x,y) tuples for blocks and db for
-        # more options
         self.processing.analyze_surroundings()
         self.turn(0)
 
@@ -261,6 +244,7 @@ class RobotControl:
         self.move_group_gripper.stop()
 
         self.ready = True
+        self.send_moves()
 
         rospy.spin()
 
