@@ -2,20 +2,20 @@
 
 import collections
 import random
-import numpy as np
+
 import rospy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Pose
 from q_learning_project.msg import (
     QLearningReward,
     QMatrix,
-    RobotMoveDBToBlock,
     QMatrixRow,
+    RobotMoveDBToBlock,
 )
 from tf.transformations import euler_from_quaternion
 
 
-def get_yaw_from_pose(p):
-    """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
+def get_yaw_from_pose(p: Pose) -> float:
+    """Takes in a Pose object and returns yaw."""
 
     yaw = euler_from_quaternion(
         [p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w]
@@ -38,20 +38,15 @@ class QLearning:
             self.q_matrix.q_matrix.append(QMatrixRow(q_matrix_row=[0] * 9))
 
         self._init_action_matrix()
-        self.actions_sequence = []
-        for i, action_1 in enumerate(self.action_matrix[0]):
-            if action_1 == -1:
-                continue
-            for j, action_2 in enumerate(self.action_matrix[i]):
-                if action_2 == -1:
-                    continue
-                for k, action_3 in enumerate(self.action_matrix[j]):
-                    if action_3 == -1:
-                        continue
-                    self.actions_sequence.extend(
-                        [action_1, action_2, action_3]
-                    )
 
+        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
+
+        # ints representing the current state, next state, and action taken
+        self.action_states_queue = collections.deque()
+        self.state = 0
+        self.iterations = 0
+
+        # Init ROS node, publishers and subscribers if not testing.
         if not test_mode:
             rospy.init_node("turtlebot3_q_learning", anonymous=True)
 
@@ -68,14 +63,8 @@ class QLearning:
 
             self.q_matrix_publisher.publish(self.q_matrix)
 
-        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
-        # ints representing the current state and action taken
-        self.action_states_queue = collections.deque()
-        self.state = 0
-        self.iterations = 0
-        self.waiting_for_reward = False
-
     def _init_action_matrix(self):
+        """Initializes the action matrix."""
         # define red = 0, green = 1, blue = 2
         # define origin = 0, block 1 = 1, ....
         actions = []
@@ -94,15 +83,26 @@ class QLearning:
                 goal_valid = self._is_goal_valid(goal)
                 if not goal_valid:
                     continue
-                # check only one dumbell is moving at a time
 
+                # If the move is valid, set the correct action at
+                # (index1, index2)
                 if self._is_move_valid(start, goal):
                     for color in range(3):
                         if start[color] < goal[color] and goal[color] != 0:
                             action = goal[color] - 1 + color * 3
                             self.action_matrix[index1][index2] = action
 
-    def _is_goal_valid(self, goal):
+    def _is_goal_valid(self, goal: tuple[int, int, int]) -> bool:
+        """Checks that the goal is a valid state.
+
+        Parameters:
+            goal: The locations of the red, green, and blue dumbbells, in that
+            order.
+
+        Returns:
+            A boolean indicating if the state is valid, i.e., there is at most
+            one dumbbell per block.
+        """
         goal_valid = True
         found_pos = set()
         for position in goal:
@@ -112,7 +112,22 @@ class QLearning:
             found_pos.add(position)
         return goal_valid
 
-    def _is_move_valid(self, start, goal):
+    def _is_move_valid(
+        self, start: tuple[int, int, int], goal: tuple[int, int, int]
+    ) -> bool:
+        """Checks that the move from start to goal is valid.
+
+        Parameters:
+            start: The initial locations of the red, green, and blue dumbbells,
+                in that order.
+            goal: The end locations of the red, green, and blue dumbbells, in
+                that order.
+
+        Returns:
+            A boolean indicating if the move from start to goal is valid, which
+            means that only one dumbbell was moved and it was moved from the
+            origin to a block.
+        """
         moves = 0
         for x, y in zip(start, goal):
             if y != x and x == 0:
@@ -121,22 +136,26 @@ class QLearning:
                 return False
         return moves == 1
 
-    def _get_q_row(self, state):
+    def _get_q_row(self, state: int) -> list[int]:
+        """Returns the row of the Q-matrix corresponding to the given state."""
         return self.q_matrix.q_matrix[state].q_matrix_row
 
-    def _get_q_cell(self, state, action):
+    def _get_q_cell(self, state: int, action: int) -> int:
+        """Returns the value of the Q-matrix at the given state and action."""
         return self.q_matrix.q_matrix[state].q_matrix_row[action]
 
-    def _set_q_cell(self, state, action, value):
+    def _set_q_cell(self, state: int, action: int, value: float) -> None:
+        """Sets the value of the Q-matrix at the given state and action."""
         self.q_matrix.q_matrix[state].q_matrix_row[action] = int(value)
 
     def update_q_matrix(self, data):
-        """Updates thr Q-matrix based on the give reward."""
-        print(data)
+        """Updates thr Q-matrix based on the received reward."""
+
+        # if no actions have been taken, return
         if not self.action_states_queue:
             return
-        reward = data.reward
 
+        reward = data.reward
         state, next_state, action = self.action_states_queue.popleft()
 
         current_value = self._get_q_cell(state, action)
@@ -145,29 +164,33 @@ class QLearning:
             reward + self.gamma * max(next_state_row) - current_value
         )
 
+        # checks if the values are close enough (for convergence)
         if abs(new_value - current_value) < self.epsilon:
             self.counter += 1
         else:
             self.counter = 0
-        self._set_q_cell(state, action, new_value)
 
+        # update Q-matrix and publish it
+        self._set_q_cell(state, action, new_value)
         self.q_matrix_publisher.publish(self.q_matrix)
 
     def q_algorithm(self):
-        actions = [2, 3, 7]
-        while (
-            sum(self._get_q_row(0)) != self.gamma ** 2 * 100 or self.state != 0
-        ):
+        """Selects and sends the actions taken by the Q-algorithm."""
+
+        # Loop runs until the Q-matrix has converged and the state is back at 0
+        while self.counter < 100 or self.state != 0:
+            # Sleep to prevent race conditions.
             rospy.sleep(1.5)
-            print(self.iterations, self.state, self._get_q_row(self.state))
+
+            # Select an action at random.
             possible_actions = [
                 i for i in self.action_matrix[self.state] if i != -1
             ]
-            action = actions[
-                self.iterations % 3
-            ]  # random.choice(possible_actions)
+
+            action = random.choice(possible_actions)
             next_state = self.action_matrix[self.state].index(action)
             self.action_states_queue.append((self.state, next_state, action))
+
             self.iterations += 1
 
             self.move_publisher.publish(
@@ -176,37 +199,20 @@ class QLearning:
                     block_id=action % 3 + 1,
                 )
             )
+
+            # Sets self.state to the correct value based on the number of
+            # iterations
             if self.iterations % 3 == 0:
                 self.state = 0
             else:
-                if next_state == 0:
-                    print(self.state, action, next_state)
                 self.state = next_state
-        self.converged = True
-        print("Converged. Close phantom_movement.py")
+
+        print("Converged. Close phantom_movement.py and run robot_control.py.")
 
     def run(self):
         self.q_algorithm()
-
-        # rospy.sleep(5)  # gazebo takes a second to get started
-
-        # # retrieving both theta values and (x,y) tuples for blocks and db for
-        # # more options
-        # self.controller.find_db_order()
-        # self.controller.find_db_locs()
-
-        # self.controller.turn(np.pi)
-        # rospy.sleep(1)
-        # self.controller.find_block_thetas(self.ranges)
-        # self.controller.find_block_order()
-        # self.controller.turn(0)
-        # self.controller.converged = True
-
-        # self.q_matrix_publisher.publish(QMatrix(q_matrix=self.q_matrix))
         rospy.spin()
 
 
 if __name__ == "__main__":
-    Q = QLearning()
-
-    Q.run()
+    QLearning().run()
