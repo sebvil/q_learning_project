@@ -54,10 +54,9 @@ class ImageProcessing:
 
             for i in range(3):
                 word = prediction_groups[i][0][0]
-                print(i)
                 if word == "l":
                     word = "1"
-                if word == "s":
+                if word in ["e", "s"]:
                     word = "3"
                 self.order_blocks.append(int(word))
 
@@ -143,7 +142,6 @@ class ImageProcessing:
         search_bot = int(h / 2 + 1)
         color = numpy.uint8([[[0, 0, 0]]])
         color[0][0][2 - color_id] = 255
-        print(color)
         hsvColor = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
         lower_color = numpy.array([hsvColor[0][0][0] - 10, 100, 100])
         upper_color = numpy.array([hsvColor[0][0][0] + 10, 255, 255])
@@ -157,7 +155,6 @@ class ImageProcessing:
 
         # Determine the center of the dumbbell
         M = cv2.moments(mask)
-        print(M["m00"])
         # Get the center of the dumbbell if color pixels are found
         if M["m00"] > 0:
             # center of the colored pixels in the image
@@ -168,7 +165,8 @@ class ImageProcessing:
     def find_db_locs(self):
         """Find the location of each of the dumbbells."""
         ranges = self.robot_controller.ranges
-        print(ranges)
+        while not ranges:
+            ranges = self.robot_controller.ranges
         # get the initial x and y values of the dumbbells
         if self.order_db and not self.db_locs:
             print("getting x y...")
@@ -187,7 +185,6 @@ class ImageProcessing:
             self.db_thetas = [-1, -1, -1]
             while db < 3:
                 theta = theta % 360
-                print(theta)
                 if ranges[theta] != numpy.inf:
                     color = self.order_db[db]
                     self.db_thetas[color] = theta

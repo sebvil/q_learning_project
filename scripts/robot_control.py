@@ -35,7 +35,14 @@ class RobotControl:
         self.converged = False
         self.ranges = []
         self.processing = image_processing.ImageProcessing(self)
-        self.index_color_map = {0: "red", 1: "green", 2: "blue"}
+        self.index_color_map = {
+            0: "red",
+            1: "green",
+            2: "blue",
+            "red": 0,
+            "green": 1,
+            "blue": 2,
+        }
 
         self.speed_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
         self.odom_subs = rospy.Subscriber("/odom", Odometry, self.process_odom)
@@ -95,7 +102,7 @@ class RobotControl:
         print("Final State:", state)
 
     def process_move(self, data):
-        db_id = data.robot_db
+        db_id = self.index_color_map[data.robot_db]
         block_id = data.block_id
 
         # Move to dumbbell and grab it
