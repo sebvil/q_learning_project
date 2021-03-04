@@ -142,3 +142,11 @@ done in the function `send_moves`.
 * For perception in particular, online resources were essential to this project. When struggling with a new and unfamiliar problem, it's wise to look for resources you can learn from or even implement in your own code to solve your problem.
 
 
+# Demo
+
+The following recording shows what the robot does after the matrix has converged.
+There were a few bugs we did not get to solve, so at the end the robot gets stuck
+without going to the next dumbbell, and it takes the green dumbbell to block
+3 instead of 1.
+
+![recording.gif](recording.gif)
