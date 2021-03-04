@@ -3,10 +3,23 @@
 Team members: Leandra Nealer and Sebastian Villegas Mejia
 
 ## Objectives
-The purpose of this project is to execute the q-learning algoritm and use its output to determine the optimal arrangement of dumbbells in front of numbered blocks. After running the algorithm using the phantom_movement script to test different orientations, the robot will identify the locations of the dumbbells and blocks and then move the dumbells to the position that maximizes reward.
+The purpose of this project is to execute the q-learning algorithm and use its 
+output to determine the optimal arrangement of dumbbells in front of numbered 
+blocks. After running the algorithm using the `phantom_movement.py` script to
+test different orientations, the robot will identify the locations of the 
+dumbbells and blocks and then move the dumbbells to the position that maximizes
+reward.
 
 ## High-Level Description
-We first attempt at random the various orientations of blocks and dumbbells by choosing randomly from the valid actions for the current state. For each orientation, the reward is retrieved. Then the q-algorithm equation is used to calculate the value of this particular action on this particular state, considering both the immediate reward and the possible reward from the next state. This process is continued iteratively until convergence (when every state has been considered). At this point we have calculated the value of every valid action for every state. Using these values we can determine the optimal orientation.
+We first attempt at random the various orientations of blocks and dumbbells
+by choosing randomly from the valid actions for the current state. For each 
+orientation, the reward is retrieved. Then the q-algorithm equation is used to 
+calculate the value of this particular action on this particular state, 
+considering both the immediate reward and the possible reward from the next 
+state. This process is continued iteratively until convergence (when every 
+state has been considered). At this point we have calculated the value of every 
+valid action for every state. Using these values we can determine the optimal 
+orientation.
 
 ### Initializing action matrix
 The action matrix is a 2D array indexed by states that holds the action needed to move from state 1 to state 2. (i.e. action[state1][state2]) = (action to change from state 1 to state 2). It holds negative 1 for invalid actions.

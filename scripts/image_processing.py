@@ -54,8 +54,11 @@ class ImageProcessing:
 
             for i in range(3):
                 word = prediction_groups[i][0][0]
+                print(i)
                 if word == "l":
                     word = "1"
+                if word == "s":
+                    word = "3"
                 self.order_blocks.append(int(word))
 
             # reorder theta and dist to reflect order of blocks
@@ -147,20 +150,20 @@ class ImageProcessing:
 
         # Gets centers of red, green, and blue dumbbells, in that order
         for i in range(3):
-            self.db_locs.append(self.get_center_for_color)
+            self.order_db.append(self.get_center_for_color(i))
 
         # if one of the colors was not found, assume location is at edge of
         # image
-        if -1 in self.db_locs:
-            ind = self.db_locs.index(-1)
-            avg = (sum(self.db_locs) + 1) / 2
+        if -1 in self.order_db:
+            ind = self.order_db.index(-1)
+            avg = (sum(self.order_db) + 1) / 2
             image_width = self.image.shape[2]
             if avg > image_width / 2:
-                self.db_locs[ind] = 0
+                self.order_db[ind] = 0
             else:
-                self.db_locs[ind] = image_width
+                self.order_db[ind] = image_width
 
-    def get_center_for_color(self, color: int):
+    def get_center_for_color(self, color_id: int):
         """Gets the center of the image for the given color.
 
         Parameters:
@@ -174,7 +177,8 @@ class ImageProcessing:
         search_top = int(h / 2)
         search_bot = int(h / 2 + 1)
         color = numpy.uint8([[[0, 0, 0]]])
-        color[0][0][2 - color] = 255
+        color[0][0][2 - color_id] = 255
+        print(color)
         hsvColor = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
         lower_color = numpy.array([hsvColor[0][0][0] - 10, 100, 100])
         upper_color = numpy.array([hsvColor[0][0][0] + 10, 255, 255])
@@ -199,6 +203,7 @@ class ImageProcessing:
     def find_db_locs(self):
         """Find the location of each of the dumbbells."""
         ranges = self.robot_controller.ranges
+        print(ranges)
         # get the initial x and y values of the dumbbells
         if self.order_db and not self.db_locs:
             print("getting x y...")
@@ -244,10 +249,11 @@ class ImageProcessing:
         """Determines initial locations of blocks and dumbbells."""
         self.find_db_order()
         self.find_db_locs()
+        print(self.db_locs, self.db_thetas, self.order_db)
 
-        self.turn(numpy.pi)
+        self.robot_controller.turn(numpy.pi)
         rospy.sleep(1)
-        self.find_block_thetas(self.ranges)
+        self.find_block_thetas()
         self.find_block_order()
-
+        print(self.block_locs, self.block_thetas, self.order_blocks)
         print("DONE")
