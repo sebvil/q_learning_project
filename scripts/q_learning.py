@@ -180,7 +180,7 @@ class QLearning:
         """Selects and sends the actions taken by the Q-algorithm."""
 
         # Loop runs until the Q-matrix has converged and the state is back at 0
-        while 25 not in self._get_q_row(0) or self.state != 0:
+        while self.counter < 50 or self.state != 0:
             # Sleep to prevent race conditions.
             rospy.sleep(1.5)
 
